@@ -93,8 +93,8 @@ const char* FragShaderSource1 = R"(
  out vec4 color;
 
  void main() {
-    int k = 4;
-    if (mod(vertexPosition.x * 100, k / 2) > k / 4){
+    int k = 10;
+    if (mod(int(vertexPosition.x * k + k), 2) == 0){
         color = vec4(mainColor, 1.0f);
     } else{
         color = vec4(1.0f, 1.0f, 1.0f, 1.0f);

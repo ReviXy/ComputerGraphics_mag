@@ -12,7 +12,8 @@
 #include <glm/gtc/type_ptr.hpp>
 
 float scale = 0.1f;
-glm::vec3 podiumPosition = glm::vec3(0.5f, 0.0f, 0.0f);
+glm::vec3 podiumPosition = glm::vec3(1.0f, 0.0f, 0.0f);
+glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 5.0f);
 float rotation1 = 0.0f; // каждый куб относительно своего центра
 float rotation2 = 0.0f; // подиум относительно своего центра
 float rotation3 = 0.0f; // подиум относительно центра координат
@@ -195,9 +196,13 @@ void Init() {
 // Отрисовка на каждом шаге
 void Draw() {
     glUseProgram(Program); // Устанавливаем шейдерную программу текущей
+    glm::mat4 projection = glm::perspective(45.0f * Pi / 180, (GLfloat)600 / (GLfloat)600, 0.1f, 100.0f);
+    glm::mat4 view = glm::mat4(1.0f);
+    view = glm::translate(view, -glm::vec3(cameraPos));
+
     glm::mat4 model0;
 
-    model0 = glm::mat4(1.0f);
+    model0 = projection * view;
     model0 = glm::rotate(model0, (GLfloat)glm::radians(rotation3), glm::vec3(0.0f, 1.0f, 0.0f)); // Поворот относительно центра координат
     model0 = glm::translate(model0, podiumPosition); // Перенос в мировую систему координат
     model0 = glm::rotate(model0, (GLfloat)glm::radians(rotation2), glm::vec3(0.0f, 1.0f, 0.0f)); // Поворот относительно центра подиума
@@ -219,7 +224,7 @@ void Draw() {
 
     //_______________________________________________________
 
-    model0 = glm::mat4(1.0f);
+    model0 = projection * view;
     model0 = glm::rotate(model0, (GLfloat)glm::radians(rotation3), glm::vec3(0.0f, 1.0f, 0.0f)); // Поворот относительно центра координат
     model0 = glm::translate(model0, podiumPosition); // Перенос в мировую систему координат
     model0 = glm::rotate(model0, (GLfloat)glm::radians(rotation2), glm::vec3(0.0f, 1.0f, 0.0f)); // Поворот относительно центра подиума
@@ -241,7 +246,7 @@ void Draw() {
 
     //_______________________________________________________
 
-    model0 = glm::mat4(1.0f);
+    model0 = projection * view;
     model0 = glm::rotate(model0, (GLfloat)glm::radians(rotation3), glm::vec3(0.0f, 1.0f, 0.0f)); // Поворот относительно центра координат
     model0 = glm::translate(model0, podiumPosition); // Перенос в мировую систему координат
     model0 = glm::rotate(model0, (GLfloat)glm::radians(rotation2), glm::vec3(0.0f, 1.0f, 0.0f)); // Поворот относительно центра подиума
