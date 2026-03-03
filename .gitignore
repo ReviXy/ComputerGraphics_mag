@@ -426,3 +426,36 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Dependencies
+node_modules/
+/pnpm-store/
+
+# Build artifacts
+dist/
+build/
+.next/        # Next.js
+.nuxt/        # Nuxt.js
+.svelte-kit/  # Sveltekit
+out/          # Gatsby or Next.js custom output dir
+
+# Temporary files, caches, logs
+.cache/
+.parcel-cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.temp/
+logs/
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE/OS files
+.vscode/      # VS Code directory (optional, some prefer to commit extension suggestions)
+.idea/        # WebStorm/IntelliJ
+.DS_Store     # macOS
+Thumbs.db     # Windows
