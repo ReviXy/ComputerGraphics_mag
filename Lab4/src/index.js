@@ -1,6 +1,7 @@
 import { vec3, mat4, mat3 } from 'gl-matrix';
 import cubeOBJ from './cube.obj';
 import skullOBJ from './skull.obj';
+import busOBJ from './bus.obj';
 
 import textureNumber1Url from 'url:./1.png';
 import textureNumber2Url from 'url:./2.png';
@@ -10,6 +11,7 @@ import textureMaterial2Url from 'url:./iron.png';
 import textureMaterial3Url from 'url:./copper.png';
 
 import textureSkullURL from 'url:./skull.jpg';
+import textureBusURL from 'url:./bus.png';
 
 document.addEventListener('DOMContentLoaded', setup);
 
@@ -19,7 +21,7 @@ gl.viewport(0, 0, canvas.width, canvas.height);
 
 const cameraPos = [0.0, 0.0, 5.0];
 
-let podiumPosition = [1.5, 0.0, 0.0];
+let podiumPosition = [2.0, 0.0, 0.0];
 let rotation1 = 0.0; // каждый куб относительно своего центра
 let rotation2 = 0.0; // подиум относительно своего центра
 let rotation3 = 0.0; // подиум относительно центра координат
@@ -27,7 +29,7 @@ let scale = 0.25;
 
 let textureProportion = 0.5, colorProportion = 0.5;
 
-let VBO_cube, VBO_skull;
+let VBO_cube, VBO_skull, VBO_bus;
 let program, program1;
 let positionAttribID = 0, texCoordAttribID = 1;
 let startTime;
@@ -73,7 +75,7 @@ const fragmentShaderSource = `#version 300 es
         
         vec4 mixedColor = mix(materialColor, numberColor, numberColor.a * textureProportion);
         
-        color = mix(mixedColor, vec4(baseColor, 1.0), colorProportion);
+        color = mixedColor * vec4(baseColor, 1.0);
         color.a = 1.0;
     }
 `;
@@ -139,7 +141,7 @@ async function init() {
 
 let textureNumber1, textureNumber2, textureNumber3;
 let textureMaterial1, textureMaterial2, textureMaterial3;
-let textureSkull;
+let textureSkull, textureBus;
 
 async function initTextures() {
     textureNumber1 = gl.createTexture();
@@ -150,6 +152,7 @@ async function initTextures() {
     textureMaterial3 = gl.createTexture();
 
     textureSkull = gl.createTexture();
+    textureBus = gl.createTexture();
 
     await Promise.all([
         loadTexture(textureNumber1, textureNumber1Url),
@@ -158,7 +161,8 @@ async function initTextures() {
         loadTexture(textureMaterial1, textureMaterial1Url),
         loadTexture(textureMaterial2, textureMaterial2Url),
         loadTexture(textureMaterial3, textureMaterial3Url),
-        loadTexture(textureSkull, textureSkullURL)
+        loadTexture(textureSkull, textureSkullURL),
+        loadTexture(textureBus, textureBusURL)
     ]);
 }
 
@@ -200,10 +204,11 @@ async function readObj(obj) {
     return objContent;
 }
 
-let cube, skull;
+let cube, skull, bus;
 async function initVBO() {
     VBO_cube = gl.createBuffer();
     VBO_skull = gl.createBuffer();
+    VBO_bus = gl.createBuffer();
 
     cube = parseObjToVertexArray(await readObj(cubeOBJ));
 
@@ -214,6 +219,11 @@ async function initVBO() {
 
     gl.bindBuffer(gl.ARRAY_BUFFER, VBO_skull);
     gl.bufferData(gl.ARRAY_BUFFER, skull, gl.STATIC_DRAW);
+
+    bus = parseObjToVertexArray(await readObj(busOBJ));
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, VBO_bus);
+    gl.bufferData(gl.ARRAY_BUFFER, bus, gl.STATIC_DRAW);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
     
@@ -390,6 +400,7 @@ function draw() {
 
     model = mat4.create();
     
+    mat4.translate(model, model, [-0.5, -0.5, 0.0]);
     mat4.rotate(model, model, rotation2, [0, 1, 0]);
     mat4.rotate(model, model, -Math.PI / 2, [1, 0, 0]);
     mat4.scale(model, model, [0.03, 0.03, 0.03]);
@@ -407,6 +418,33 @@ function draw() {
 
     gl.drawArrays(gl.TRIANGLES, 0, skull.length / 8);
 
+    //------------------------------------------------------------------------
+
+    gl.useProgram(program1);
+
+    gl.uniformMatrix4fv(viewProjectionUniformID1, false, viewProjection);
+    gl.uniform1i(textureUniformID, 0);
+
+    model = mat4.create();
+    
+    mat4.translate(model, model, [0.5, -0.5, 0.0]);
+    mat4.rotate(model, model, rotation2, [0, 1, 0]);
+    mat4.rotate(model, model, Math.PI, [0, 1, 0]);
+    mat4.rotate(model, model, 0, [1, 0, 0]);
+    mat4.scale(model, model, [0.07, 0.07, 0.07]);
+
+    gl.uniformMatrix4fv(modelUniformID1, false, model);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, textureBus);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, VBO_bus);
+    gl.enableVertexAttribArray(positionAttribID);
+    gl.vertexAttribPointer(positionAttribID, 3, gl.FLOAT, false, 32, 0);
+    gl.enableVertexAttribArray(texCoordAttribID);
+    gl.vertexAttribPointer(texCoordAttribID, 2, gl.FLOAT, false, 32, 12);
+
+    gl.drawArrays(gl.TRIANGLES, 0, bus.length / 8);
 
     //------------------------------------------------------------------------
 
