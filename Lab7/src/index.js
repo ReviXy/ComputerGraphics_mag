@@ -27,7 +27,7 @@ let rotation2 = 0.0; // подиум относительно своего це�
 let rotation3 = 0.0; // подиум относительно центра координат
 let scale = 0.25;
 
-let textureProportion = 0.5, colorProportion = 0.5;
+let textureProportion = 0.5;
 
 let VBO_cube, VBO_skull, VBO_bus;
 let program, program1;
@@ -65,7 +65,6 @@ const fragmentShaderSource = `#version 300 es
     uniform sampler2D textureMaterial;
 
     uniform float textureProportion;
-    uniform float colorProportion;
 
     out vec4 color;
 
@@ -82,7 +81,7 @@ const fragmentShaderSource = `#version 300 es
 
 const fragmentShaderSource1 = `#version 300 es
     precision mediump float;
-    precision mediump int;
+    precision highp int;
 
     in vec2 TexCoord;
     uniform sampler2D tex;
@@ -160,7 +159,9 @@ const grainFragmentShader = `#version 300 es
     
     in vec2 vTexCoord;
     uniform sampler2D u_sceneTexture;
-    const float u_intensity = 0.2;
+    uniform float u_time;
+
+    const float u_intensity = 0.5;
     const float u_grainSize = 2.0;
     
     out vec4 color;
@@ -172,7 +173,7 @@ const grainFragmentShader = `#version 300 es
     void main() {
         vec4 sceneColor = texture(u_sceneTexture, vTexCoord);
         
-        vec2 grainCoord = vTexCoord * u_grainSize;
+        vec2 grainCoord = (vTexCoord + u_time) * u_grainSize;
         float grain = random(grainCoord);
         vec3 grainyColor = sceneColor.rgb + (grain - 0.5) * u_intensity;
         
@@ -185,7 +186,7 @@ const bloomExtractFragmentShader = `#version 300 es
     
     in vec2 vTexCoord;
     uniform sampler2D u_sceneTexture;
-    const float threshold = 0.5;
+    const float threshold = 0.8;
     
     out vec4 color;
     
@@ -232,14 +233,110 @@ const bloomCombineFragmentShader = `#version 300 es
     in vec2 vTexCoord;
     uniform sampler2D u_sceneTexture;
     uniform sampler2D u_bloomTexture;
-    const float intensity = 0.5;
+    uniform float u_intensity;
     
     out vec4 color;
     
     void main() {
         vec4 sceneColor = texture(u_sceneTexture, vTexCoord);
         vec4 bloomColor = texture(u_bloomTexture, vTexCoord);
-        color = sceneColor + bloomColor * intensity;
+        color = sceneColor + bloomColor * u_intensity;
+    }
+`;
+
+//------------------------------------------------
+
+const depthVertexShaderSource = `#version 300 es
+    precision mediump float;
+    precision mediump int;
+
+    layout (location = 0) in vec3 position;
+    layout (location = 1) in vec2 texCoord;
+
+    uniform struct Transform {
+        mat4 model;
+        mat4 viewProjection;
+    } transform;
+
+    void main() {
+        gl_Position = transform.viewProjection * transform.model * vec4(position, 1.0);
+    }
+`;
+
+const depthFragmentShaderSource = `#version 300 es
+    precision highp float;
+    
+    uniform vec2 u_nearFar;
+    out vec4 color;
+    
+    void main() {
+        float z = gl_FragCoord.z;
+        float linearDepth = (2.0 * u_nearFar.x) / (u_nearFar.y + u_nearFar.x - z * (u_nearFar.y - u_nearFar.x));
+        color = vec4(linearDepth, linearDepth, linearDepth, 1.0);
+    }
+`;
+
+const dofFragmentShader = `#version 300 es
+    precision mediump float;
+    
+    in vec2 vTexCoord;
+    uniform sampler2D u_image;
+    uniform sampler2D u_depth;
+    uniform vec2 u_resolution;
+    uniform float u_focus;
+    uniform float u_aperture;
+    
+    out vec4 color;
+    
+    float getBlurRadius(float depth) {
+        return abs(depth - u_focus) * u_aperture * 10.0;
+    }
+    
+    void main() {
+        float depth = texture(u_depth, vTexCoord).r;
+        float radius = getBlurRadius(depth);
+        
+        // Ограничиваем количество сэмплов для производительности
+        int samples = 1 + int(radius * 16.0);
+        samples = min(samples, 32);  // Максимум 32 сэмпла
+        
+        vec4 result = vec4(0.0);
+        
+        for (int i = 0; i < 32; i++) {
+            if (i >= samples) break;
+            
+            float angle = float(i) * 6.28318 / float(samples);
+            float r = sqrt(float(i) / float(samples)) * radius;
+            vec2 offset = vec2(cos(angle), sin(angle)) * r / u_resolution;
+            
+            result += texture(u_image, vTexCoord + offset);
+        }
+        
+        color = result / float(samples);
+    }
+`;
+
+const colorGradingFragmentShader = `#version 300 es
+    precision mediump float;
+    precision mediump sampler3D;
+    
+    in vec2 vTexCoord;
+    uniform sampler2D u_sceneTexture;
+    uniform sampler3D u_lut;        // 3D текстура LUT
+    uniform float u_intensity;       // Интенсивность эффекта (0-1)
+    
+    out vec4 color;
+    
+    void main() {
+        vec4 sceneColor = texture(u_sceneTexture, vTexCoord);
+        
+        // Применяем LUT к цвету
+        vec3 gradedColor = texture(u_lut, sceneColor.rgb).rgb;
+        
+        // Смешиваем исходный цвет с обработанным
+        vec3 finalColor = mix(sceneColor.rgb, gradedColor, u_intensity);
+        
+        color = vec4(finalColor, sceneColor.a);
     }
 `;
 
@@ -288,6 +385,9 @@ async function init() {
     gl.enable(gl.BLEND);
     gl.depthFunc(gl.LEQUAL);
 
+    gl.depthMask(true);
+    gl.clearDepth(1.0);
+
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 }
@@ -295,6 +395,7 @@ async function init() {
 let textureNumber1, textureNumber2, textureNumber3;
 let textureMaterial1, textureMaterial2, textureMaterial3;
 let textureSkull, textureBus;
+let lutTexture;
 
 async function initTextures() {
     textureNumber1 = gl.createTexture();
@@ -317,6 +418,8 @@ async function initTextures() {
         loadTexture(textureSkull, textureSkullURL),
         loadTexture(textureBus, textureBusURL)
     ]);
+
+    lutTexture = create3DTexture(createSepiaLUT());
 }
 
 function loadTexture(textureObject, imageUrl) {
@@ -349,6 +452,55 @@ function loadTexture(textureObject, imageUrl) {
         };
         img.src = imageUrl;
     });
+}
+
+function create3DTexture(data, size = 32) {
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_3D, texture);
+    
+    gl.texImage3D(
+        gl.TEXTURE_3D, 0, gl.RGBA, 
+        size, size, size, 0,
+        gl.RGBA, gl.UNSIGNED_BYTE, data
+    );
+    
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+    
+    gl.bindTexture(gl.TEXTURE_3D, null);
+    
+    return texture;
+}
+
+function createSepiaLUT(size = 32) {
+    const data = new Uint8Array(size * size * size * 4);
+    
+    for (let r = 0; r < size; r++) {
+        for (let g = 0; g < size; g++) {
+            for (let b = 0; b < size; b++) {
+                const index = (r * size * size + g * size + b) * 4;
+                
+                let r_in = r * 255 / (size - 1);
+                let g_in = g * 255 / (size - 1);
+                let b_in = b * 255 / (size - 1);
+                
+                // Конвертация в sepia
+                let r_out = Math.min(255, r_in * 0.393 + g_in * 0.769 + b_in * 0.189);
+                let g_out = Math.min(255, r_in * 0.349 + g_in * 0.686 + b_in * 0.168);
+                let b_out = Math.min(255, r_in * 0.272 + g_in * 0.534 + b_in * 0.131);
+                
+                data[index] = r_out;
+                data[index + 1] = g_out;
+                data[index + 2] = b_out;
+                data[index + 3] = 255;
+            }
+        }
+    }
+    
+    return data;
 }
 
 async function readObj(obj) {
@@ -385,9 +537,21 @@ async function initVBO() {
 
 let FBO1, FBO2;
 let frameTexture1, frameTexture2, tempTexture;
+
+let FBO1_downsampled, FBO2_downsampled;
+let downsampledTexture1, downsampledTexture2;
+let downsample = 0.5;
+
+let depthTexture;
+let FBO_depth;
+
 function initFBO() {
     FBO1 = gl.createFramebuffer();
     FBO2 = gl.createFramebuffer();
+    FBO1_downsampled = gl.createFramebuffer();
+    FBO2_downsampled = gl.createFramebuffer();
+
+    //--------------------------------------------------
 
     const depthBuffer = gl.createRenderbuffer();
     gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
@@ -401,10 +565,10 @@ function initFBO() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-    // Прикрепляем текстуру к FBO
     gl.bindFramebuffer(gl.FRAMEBUFFER, FBO1);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, frameTexture1, 0);
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+
 
     frameTexture2 = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, frameTexture2);
@@ -414,10 +578,63 @@ function initFBO() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-    // Прикрепляем текстуру к FBO
     gl.bindFramebuffer(gl.FRAMEBUFFER, FBO2);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, frameTexture2, 0);
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+
+    //--------------------------------------------------
+
+    const depthBufferDownsampled = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBufferDownsampled);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, canvas.width * downsample, canvas.height * downsample);
+
+    downsampledTexture1 = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, downsampledTexture1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width * downsample, canvas.height * downsample, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO1_downsampled);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, downsampledTexture1, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBufferDownsampled);
+
+
+    downsampledTexture2 = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, downsampledTexture2);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width * downsample, canvas.height * downsample, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO2_downsampled);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, downsampledTexture2, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBufferDownsampled);
+
+    //--------------------------------------------------
+
+    FBO_depth = gl.createFramebuffer();
+    
+    depthTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, depthTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width, canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    
+    // Добавляем depth renderbuffer
+    const depthRB = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depthRB);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, canvas.width, canvas.height);
+    
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO_depth);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, depthTexture, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthRB);
+
+    //--------------------------------------------------
 
     // Проверка на завершенность
     if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
@@ -468,11 +685,23 @@ let modelUniformID,
 
 let baseColorUniformID,
     textureNumberUniformID, textureMaterialUniformID, 
-    textureProportionUniformID, colorProportionUniformID;
+    textureProportionUniformID;
 let modelUniformID1, viewProjectionUniformID1,  textureUniformID;
+
+let programDOF_u_image, 
+    programDOF_u_depth, 
+    programDOF_u_resolution, 
+    programDOF_u_focus, 
+    programDOF_u_aperture,
+    programDepth_nearFar;
+
+let modelUniformID_d, 
+    viewProjectionUniformID_d;
 
 let programOutput, programVignette, programGrain;
 let programBloomExtract, programBloomBlur, programBloomCombine;
+let programDepth, programDOF;
+let programColorGrading;
 
 function initShaders() {
     program = initShader(vertexShaderSource, fragmentShaderSource);
@@ -485,7 +714,6 @@ function initShaders() {
     textureMaterialUniformID = gl.getUniformLocation(program, 'textureMaterial');
 
     textureProportionUniformID = gl.getUniformLocation(program, 'textureProportion');
-    colorProportionUniformID = gl.getUniformLocation(program, 'colorProportion');
 
     program1 = initShader(vertexShaderSource, fragmentShaderSource1);
     textureUniformID = gl.getUniformLocation(program1, 'tex');
@@ -501,6 +729,23 @@ function initShaders() {
     programBloomExtract = initShader(fullscreenVertexShader, bloomExtractFragmentShader);
     programBloomBlur = initShader(fullscreenVertexShader, bloomBlurFragmentShader);
     programBloomCombine = initShader(fullscreenVertexShader, bloomCombineFragmentShader);
+
+    //------------------------------------------------
+
+    programDepth = initShader(depthVertexShaderSource, depthFragmentShaderSource);
+    programDOF = initShader(fullscreenVertexShader, dofFragmentShader);
+
+    programDOF_u_image = gl.getUniformLocation(programDOF, 'u_image');
+    programDOF_u_depth = gl.getUniformLocation(programDOF, 'u_depth');
+    programDOF_u_resolution = gl.getUniformLocation(programDOF, 'u_resolution');
+    programDOF_u_focus = gl.getUniformLocation(programDOF, 'u_focus');
+    programDOF_u_aperture = gl.getUniformLocation(programDOF, 'u_aperture');
+    
+    programDepth_nearFar = gl.getUniformLocation(programDepth, 'u_nearFar');
+    modelUniformID_d = gl.getUniformLocation(programDepth, 'transform.model');
+    viewProjectionUniformID_d = gl.getUniformLocation(programDepth, 'transform.viewProjection');
+
+    programColorGrading = initShader(fullscreenVertexShader, colorGradingFragmentShader);
     
     checkWebGLerror();
 }
@@ -510,7 +755,6 @@ function draw() {
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-
     gl.useProgram(program);
 
     const projection = mat4.create();
@@ -518,14 +762,13 @@ function draw() {
     const viewProjection = mat4.create();
     let model = mat4.create();
     
-    mat4.perspective(projection, 45.0 * Math.PI / 180, canvas.width / canvas.height, 0.1, 100.0);
+    mat4.perspective(projection, 45.0 * Math.PI / 180, canvas.width / canvas.height, 0.1, 10.0);
     mat4.identity(view);
     mat4.translate(view, view, [-cameraPos[0], -cameraPos[1], -cameraPos[2]]);
     mat4.multiply(viewProjection, projection, view);
 
     gl.uniformMatrix4fv(viewProjectionUniformID, false, viewProjection);
     gl.uniform1f(textureProportionUniformID, textureProportion);
-    gl.uniform1f(colorProportionUniformID, colorProportion);
     gl.uniform1i(textureNumberUniformID, 0);
     gl.uniform1i(textureMaterialUniformID, 1);
 
@@ -686,10 +929,191 @@ function draw() {
     checkWebGLerror();
 }
 
+function renderDepth() {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO_depth);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    
+    gl.useProgram(programDepth);
+    
+    // Передаем near/far плоскости
+    gl.uniform2f(programDepth_nearFar, 0.1, 10);
+    
+    // Та же матрица проекции, что и в draw()
+    const projection = mat4.create();
+    const view = mat4.create();
+    const viewProjection = mat4.create();
+    
+    mat4.perspective(projection, 45.0 * Math.PI / 180, canvas.width / canvas.height, 0.1, 10.0);
+    mat4.identity(view);
+    mat4.translate(view, view, [-cameraPos[0], -cameraPos[1], -cameraPos[2]]);
+    mat4.multiply(viewProjection, projection, view);
+
+    gl.uniformMatrix4fv(viewProjectionUniformID_d, false, viewProjection);
+    
+    let model = mat4.create();
+    mat4.rotate(model, model, rotation3, [0, 1, 0]);
+    mat4.translate(model, model, podiumPosition);
+    mat4.rotate(model, model, rotation2, [0, 1, 0]);
+    mat4.translate(model, model, [0.0, 0.0, 0.0]);
+    mat4.rotate(model, model, rotation1, [0, 1, 0]);
+    mat4.scale(model, model, [1.0, 1.25, 1.0]);
+    mat4.scale(model, model, [scale, scale, scale]);
+
+    gl.uniformMatrix4fv(modelUniformID_d, false, model);
+
+    // gl.uniform3f(baseColorUniformID, 1.0, 1.0, 0.0);
+
+    // gl.activeTexture(gl.TEXTURE0);
+    // gl.bindTexture(gl.TEXTURE_2D, textureNumber1);
+    
+    // gl.activeTexture(gl.TEXTURE1);
+    // gl.bindTexture(gl.TEXTURE_2D, textureMaterial1);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, VBO_cube);
+    gl.enableVertexAttribArray(positionAttribID);
+    gl.vertexAttribPointer(positionAttribID, 3, gl.FLOAT, false, 32, 0);
+    gl.enableVertexAttribArray(texCoordAttribID);
+    gl.vertexAttribPointer(texCoordAttribID, 2, gl.FLOAT, false, 32, 12);
+
+    gl.drawArrays(gl.TRIANGLES, 0, cube.length / 8);
+
+    //------------------------------------------------------------------------
+
+    model = mat4.create();
+    mat4.rotate(model, model, rotation3, [0, 1, 0]);
+    mat4.translate(model, model, podiumPosition);
+    mat4.rotate(model, model, rotation2, [0, 1, 0]);
+    mat4.translate(model, model, [-2.0 * scale, - 2.0 * scale * 0.25 / 2, 0.0]);
+    mat4.rotate(model, model, rotation1, [0, 1, 0]);
+    mat4.scale(model, model, [1.0, 1.0, 1.0]);
+    mat4.scale(model, model, [scale, scale, scale]);
+
+    gl.uniformMatrix4fv(modelUniformID_d, false, model);
+
+    // gl.uniform3f(baseColorUniformID, 0.6, 0.6, 0.6);
+
+    // gl.activeTexture(gl.TEXTURE0);
+    // gl.bindTexture(gl.TEXTURE_2D, textureNumber2);
+    
+    // gl.activeTexture(gl.TEXTURE1);
+    // gl.bindTexture(gl.TEXTURE_2D, textureMaterial2);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, VBO_cube);
+    gl.enableVertexAttribArray(positionAttribID);
+    gl.vertexAttribPointer(positionAttribID, 3, gl.FLOAT, false, 32, 0);
+    gl.enableVertexAttribArray(texCoordAttribID);
+    gl.vertexAttribPointer(texCoordAttribID, 2, gl.FLOAT, false, 32, 12);
+
+    gl.drawArrays(gl.TRIANGLES, 0, cube.length / 8);
+
+    //------------------------------------------------------------------------
+
+    model = mat4.create();
+    mat4.rotate(model, model, rotation3, [0, 1, 0]);
+    mat4.translate(model, model, podiumPosition);
+    mat4.rotate(model, model, rotation2, [0, 1, 0]);
+    mat4.translate(model, model, [2.0 * scale, -2.0 * 0.25 * scale, 0.0]);
+    mat4.rotate(model, model, rotation1, [0, 1, 0]);
+    mat4.scale(model, model, [1.0, 0.75, 1.0]);
+    mat4.scale(model, model, [scale, scale, scale]);
+
+    gl.uniformMatrix4fv(modelUniformID_d, false, model);
+
+    // gl.uniform3f(baseColorUniformID, 0.6, 0.42, 0.3);
+
+    // gl.activeTexture(gl.TEXTURE0);
+    // gl.bindTexture(gl.TEXTURE_2D, textureNumber3);
+    
+    // gl.activeTexture(gl.TEXTURE1);
+    // gl.bindTexture(gl.TEXTURE_2D, textureMaterial3);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, VBO_cube);
+    gl.enableVertexAttribArray(positionAttribID);
+    gl.vertexAttribPointer(positionAttribID, 3, gl.FLOAT, false, 32, 0);
+    gl.enableVertexAttribArray(texCoordAttribID);
+    gl.vertexAttribPointer(texCoordAttribID, 2, gl.FLOAT, false, 32, 12);
+
+    gl.drawArrays(gl.TRIANGLES, 0, cube.length / 8);
+
+    //------------------------------------------------------------------------
+
+    // gl.useProgram(program1);
+
+    // gl.uniformMatrix4fv(viewProjectionUniformID1, false, viewProjection);
+    // gl.uniform1i(textureUniformID, 0);
+
+    model = mat4.create();
+    
+    mat4.translate(model, model, [-0.5, -0.5, 0.0]);
+    mat4.rotate(model, model, rotation2, [0, 1, 0]);
+    mat4.rotate(model, model, -Math.PI / 2, [1, 0, 0]);
+    mat4.scale(model, model, [0.03, 0.03, 0.03]);
+
+    gl.uniformMatrix4fv(modelUniformID_d, false, model);
+
+    // gl.activeTexture(gl.TEXTURE0);
+    // gl.bindTexture(gl.TEXTURE_2D, textureSkull);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, VBO_skull);
+    gl.enableVertexAttribArray(positionAttribID);
+    gl.vertexAttribPointer(positionAttribID, 3, gl.FLOAT, false, 32, 0);
+    gl.enableVertexAttribArray(texCoordAttribID);
+    gl.vertexAttribPointer(texCoordAttribID, 2, gl.FLOAT, false, 32, 12);
+
+    gl.drawArrays(gl.TRIANGLES, 0, skull.length / 8);
+
+    //------------------------------------------------------------------------
+
+
+    // gl.uniformMatrix4fv(viewProjectionUniformID1, false, viewProjection);
+    // gl.uniform1i(textureUniformID, 0);
+
+    model = mat4.create();
+    
+    mat4.translate(model, model, [0.5, -0.5, 0.0]);
+    mat4.rotate(model, model, rotation2, [0, 1, 0]);
+    mat4.rotate(model, model, Math.PI, [0, 1, 0]);
+    mat4.rotate(model, model, 0, [1, 0, 0]);
+    mat4.scale(model, model, [0.07, 0.07, 0.07]);
+
+    gl.uniformMatrix4fv(modelUniformID_d, false, model);
+
+    // gl.activeTexture(gl.TEXTURE0);
+    // gl.bindTexture(gl.TEXTURE_2D, textureBus);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, VBO_bus);
+    gl.enableVertexAttribArray(positionAttribID);
+    gl.vertexAttribPointer(positionAttribID, 3, gl.FLOAT, false, 32, 0);
+    gl.enableVertexAttribArray(texCoordAttribID);
+    gl.vertexAttribPointer(texCoordAttribID, 2, gl.FLOAT, false, 32, 12);
+
+    gl.drawArrays(gl.TRIANGLES, 0, bus.length / 8);
+
+    //------------------------------------------------------------------------
+
+    gl.disableVertexAttribArray(positionAttribID);
+    gl.disableVertexAttribArray(texCoordAttribID);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    
+    gl.useProgram(null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    checkWebGLerror();
+}
+
 let readFBO, writeFBO, readTexture, writeTexture;
 let vignette = false;
 let grain = false;
 let bloom = false;
+
+let depthOfField = false;
+let u_focus = 0.2;
+let u_aperture = 0.8;
+
+let colorGrading = false;
 
 function postprocess(){
     readFBO = FBO1;
@@ -700,9 +1124,12 @@ function postprocess(){
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     
+    if (colorGrading) applyColorGrading();
+    if (depthOfField) applyDOF();
     if (vignette) applyVignette();
     if (grain) applyGrain();
     if (bloom) applyBloom();
+    
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.useProgram(programOutput);
@@ -710,10 +1137,45 @@ function postprocess(){
     gl.bindTexture(gl.TEXTURE_2D, readTexture);
     gl.uniform1i(gl.getUniformLocation(programOutput, 'u_sceneTexture'), 0);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+    
+
+    
 
     gl.useProgram(null);
 
     checkWebGLerror();
+}
+
+function applyDownsampling(){
+    gl.viewport(0, 0, canvas.width * downsample, canvas.height * downsample);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO1_downsampled);
+
+    gl.useProgram(programOutput);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, readTexture);
+    gl.uniform1i(gl.getUniformLocation(programOutput, 'u_sceneTexture'), 0);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    [readTexture, writeTexture] = [downsampledTexture1, downsampledTexture2];
+    [writeFBO, readFBO] = [FBO2_downsampled, FBO1_downsampled];
+}
+
+function applyUpsampling(){
+    gl.viewport(0, 0, canvas.width, canvas.height);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO1);
+
+    gl.useProgram(programOutput);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, readTexture);
+    gl.uniform1i(gl.getUniformLocation(programOutput, 'u_sceneTexture'), 0);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    [readTexture, writeTexture] = [frameTexture1, frameTexture2];
+    [writeFBO, readFBO] = [FBO2, FBO1];
 }
 
 function applyVignette(){
@@ -737,6 +1199,7 @@ function applyGrain(){
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, readTexture);
     gl.uniform1i(gl.getUniformLocation(programGrain, 'u_sceneTexture'), 0);
+    gl.uniform1f(gl.getUniformLocation(programGrain, 'u_time'), (performance.now() - startTime) / 1000);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
@@ -769,6 +1232,10 @@ function applyBloom(){
     [readTexture, writeTexture] = [writeTexture, readTexture];
     [writeFBO, readFBO] = [readFBO, writeFBO];
 
+
+    applyDownsampling();
+
+
     gl.bindFramebuffer(gl.FRAMEBUFFER, writeFBO);
 
     gl.useProgram(programBloomBlur);
@@ -797,6 +1264,10 @@ function applyBloom(){
     [readTexture, writeTexture] = [writeTexture, readTexture];
     [writeFBO, readFBO] = [readFBO, writeFBO];
 
+
+    applyUpsampling();
+
+
     gl.bindFramebuffer(gl.FRAMEBUFFER, writeFBO);
 
     gl.useProgram(programBloomCombine);
@@ -807,8 +1278,56 @@ function applyBloom(){
     gl.bindTexture(gl.TEXTURE_2D, readTexture);
     gl.uniform1i(gl.getUniformLocation(programBloomCombine, 'u_bloomTexture'), 1);
 
+    gl.uniform1f(gl.getUniformLocation(programBloomCombine, 'u_intensity'), 0.5 * (0.5 + 0.5 * Math.sin((performance.now() - startTime) / 2000 * Math.PI * 2)));
+
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
+    [readTexture, writeTexture] = [writeTexture, readTexture];
+    [writeFBO, readFBO] = [readFBO, writeFBO];
+}
+
+function applyDOF() {
+    renderDepth();
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, writeFBO);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    
+    gl.useProgram(programDOF);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, readTexture);
+    gl.uniform1i(programDOF_u_image, 0);
+    
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, depthTexture);
+    gl.uniform1i(programDOF_u_depth, 1);
+    
+    gl.uniform2f(programDOF_u_resolution, canvas.width, canvas.height);
+    gl.uniform1f(programDOF_u_focus, u_focus);
+    gl.uniform1f(programDOF_u_aperture, u_aperture);
+    
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    
+    [readTexture, writeTexture] = [writeTexture, readTexture];
+    [writeFBO, readFBO] = [readFBO, writeFBO];
+}
+
+let colorGradingIntensity = 0.5;
+function applyColorGrading(){
+    gl.bindFramebuffer(gl.FRAMEBUFFER, writeFBO);
+    
+    gl.useProgram(programColorGrading);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, readTexture);
+    gl.uniform1i(gl.getUniformLocation(programColorGrading, 'u_sceneTexture'), 0);
+    
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_3D, lutTexture);
+    gl.uniform1i(gl.getUniformLocation(programColorGrading, 'u_lut'), 1);
+    
+    gl.uniform1f(gl.getUniformLocation(programColorGrading, 'u_intensity'), colorGradingIntensity);
+    
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    
     [readTexture, writeTexture] = [writeTexture, readTexture];
     [writeFBO, readFBO] = [readFBO, writeFBO];
 }
@@ -827,6 +1346,16 @@ function handleKeyboard() {
     if (keysPressed['Digit3']) {
         bloom = !bloom;
         keysPressed['Digit3'] = false;
+    }
+
+    if (keysPressed['Digit4']) {
+        depthOfField = !depthOfField;
+        keysPressed['Digit4'] = false;
+    }
+
+    if (keysPressed['Digit5']) {
+        colorGrading = !colorGrading;
+        keysPressed['Digit5'] = false;
     }
 
     if (keysPressed['KeyQ']) {
