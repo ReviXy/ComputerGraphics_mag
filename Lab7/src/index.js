@@ -545,6 +545,14 @@ let downsample = 0.5;
 let depthTexture;
 let FBO_depth;
 
+let FBO_fps45_1, FBO_fps30_1, FBO_fps15_1,
+    FBO_fps45_2, FBO_fps30_2, FBO_fps15_2;
+let texture_fps45_1, texture_fps30_1, texture_fps15_1,
+    texture_fps45_2, texture_fps30_2, texture_fps15_2;
+
+let depthTexture_fps45, depthTexture_fps30, depthTexture_fps15;
+let FBO_depth_fps45, FBO_depth_fps30, FBO_depth_fps15;
+
 function initFBO() {
     FBO1 = gl.createFramebuffer();
     FBO2 = gl.createFramebuffer();
@@ -633,6 +641,102 @@ function initFBO() {
     gl.bindFramebuffer(gl.FRAMEBUFFER, FBO_depth);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, depthTexture, 0);
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthRB);
+
+    //--------------------------------------------------
+    FBO_depth_fps45 = gl.createFramebuffer();
+    FBO_depth_fps30 = gl.createFramebuffer();
+    FBO_depth_fps15 = gl.createFramebuffer();
+
+    const depthBuffer_fps45 = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer_fps45);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, canvas.width * 0.75, canvas.height * 0.75);
+
+    texture_fps45_1 = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture_fps45_1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width * 0.75, canvas.height * 0.75, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO_fps45_1);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture_fps45_1, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer_fps45);
+
+
+    texture_fps45_2 = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture_fps45_2);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width * 0.75, canvas.height * 0.75, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO_fps45_2);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture_fps45_2, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer_fps45);
+
+    //---------------------------
+
+    const depthBuffer_fps30 = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer_fps30);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, canvas.width * 0.5, canvas.height * 0.5);
+
+    texture_fps30_1 = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture_fps30_1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width * 0.5, canvas.height * 0.5, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO_fps30_1);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture_fps30_1, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer_fps30);
+
+
+    texture_fps30_2 = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture_fps30_2);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width * 0.5, canvas.height * 0.5, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO_fps30_2);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture_fps30_2, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer_fps30);
+
+    //---------------------------
+
+    const depthBuffer_fps15 = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer_fps15);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, canvas.width * 0.25, canvas.height * 0.25);
+
+    texture_fps15_1 = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture_fps15_1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width * 0.25, canvas.height * 0.25, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO_fps15_1);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture_fps15_1, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer_fps15);
+
+
+    texture_fps15_2 = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture_fps15_2);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width * 0.25, canvas.height * 0.25, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO_fps15_2);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture_fps15_2, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer_fps15);
 
     //--------------------------------------------------
 
@@ -962,14 +1066,6 @@ function renderDepth() {
 
     gl.uniformMatrix4fv(modelUniformID_d, false, model);
 
-    // gl.uniform3f(baseColorUniformID, 1.0, 1.0, 0.0);
-
-    // gl.activeTexture(gl.TEXTURE0);
-    // gl.bindTexture(gl.TEXTURE_2D, textureNumber1);
-    
-    // gl.activeTexture(gl.TEXTURE1);
-    // gl.bindTexture(gl.TEXTURE_2D, textureMaterial1);
-
     gl.bindBuffer(gl.ARRAY_BUFFER, VBO_cube);
     gl.enableVertexAttribArray(positionAttribID);
     gl.vertexAttribPointer(positionAttribID, 3, gl.FLOAT, false, 32, 0);
@@ -990,14 +1086,6 @@ function renderDepth() {
     mat4.scale(model, model, [scale, scale, scale]);
 
     gl.uniformMatrix4fv(modelUniformID_d, false, model);
-
-    // gl.uniform3f(baseColorUniformID, 0.6, 0.6, 0.6);
-
-    // gl.activeTexture(gl.TEXTURE0);
-    // gl.bindTexture(gl.TEXTURE_2D, textureNumber2);
-    
-    // gl.activeTexture(gl.TEXTURE1);
-    // gl.bindTexture(gl.TEXTURE_2D, textureMaterial2);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, VBO_cube);
     gl.enableVertexAttribArray(positionAttribID);
@@ -1020,14 +1108,6 @@ function renderDepth() {
 
     gl.uniformMatrix4fv(modelUniformID_d, false, model);
 
-    // gl.uniform3f(baseColorUniformID, 0.6, 0.42, 0.3);
-
-    // gl.activeTexture(gl.TEXTURE0);
-    // gl.bindTexture(gl.TEXTURE_2D, textureNumber3);
-    
-    // gl.activeTexture(gl.TEXTURE1);
-    // gl.bindTexture(gl.TEXTURE_2D, textureMaterial3);
-
     gl.bindBuffer(gl.ARRAY_BUFFER, VBO_cube);
     gl.enableVertexAttribArray(positionAttribID);
     gl.vertexAttribPointer(positionAttribID, 3, gl.FLOAT, false, 32, 0);
@@ -1037,11 +1117,6 @@ function renderDepth() {
     gl.drawArrays(gl.TRIANGLES, 0, cube.length / 8);
 
     //------------------------------------------------------------------------
-
-    // gl.useProgram(program1);
-
-    // gl.uniformMatrix4fv(viewProjectionUniformID1, false, viewProjection);
-    // gl.uniform1i(textureUniformID, 0);
 
     model = mat4.create();
     
@@ -1065,10 +1140,6 @@ function renderDepth() {
 
     //------------------------------------------------------------------------
 
-
-    // gl.uniformMatrix4fv(viewProjectionUniformID1, false, viewProjection);
-    // gl.uniform1i(textureUniformID, 0);
-
     model = mat4.create();
     
     mat4.translate(model, model, [0.5, -0.5, 0.0]);
@@ -1078,9 +1149,6 @@ function renderDepth() {
     mat4.scale(model, model, [0.07, 0.07, 0.07]);
 
     gl.uniformMatrix4fv(modelUniformID_d, false, model);
-
-    // gl.activeTexture(gl.TEXTURE0);
-    // gl.bindTexture(gl.TEXTURE_2D, textureBus);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, VBO_bus);
     gl.enableVertexAttribArray(positionAttribID);
